@@ -1,121 +1,106 @@
-# hybrid-dc-arc-backup-lab
-Hybrid Cloud Lab: On-Prem AD DS , Azure Arc &amp; Backup/Recovery
-# Troubleshooting-Log
 
-Dieses Dokument beschreibt drei reale Probleme, die während des Labs aufgetreten
-sind, sowie die Diagnose- und Lösungsschritte. Ziel ist, den tatsächlichen
-Fehlerbehebungsprozess nachvollziehbar zu machen – nicht nur das Endergebnis.
+# Hybrid Cloud Lab – On-Prem Active Directory, Azure Arc & Azure Backup
 
----
+Ein praxisnahes Hybrid-Cloud-Projekt, in dem ich einen lokalen Windows Server als
+Domänencontroller aufgesetzt, per **Azure Arc** an Azure angebunden und mit
+**Azure Backup / Recovery Services** gesichert und wiederhergestellt habe.
 
-## Problem 1: Server erreicht eigenes Gateway nicht
+## 🎯 Projektziel
 
-**Symptom:**
+Simulation eines typischen Hybrid-Cloud-Szenarios, wie es in kleinen und mittleren
+Unternehmen vorkommt: ein On-Premises-Server, der zentral über Azure verwaltet,
+überwacht und gesichert wird – als Vorbereitung für spätere Themen wie
+Microsoft Entra Connect Cloud Sync.
+
+## 🏗️ Architektur
+
 ```
-ping 192.168.100.2
-Ping-Statistik für 192.168.100.2:
-    Pakete: Gesendet = 4, Empfangen = 0, Verloren = 4 (100% Verlust)
-```
-
-**Diagnose:**
-- `ipconfig /all` zeigte eine korrekte statische IP-Konfiguration
-  (`192.168.100.10`, Gateway `192.168.100.2`)
-- Die Windows-Konfiguration war also korrekt – das Problem musste außerhalb
-  von Windows liegen
-- Prüfung der VMware-Netzwerkadapter-Einstellungen: Adapter war korrekt auf
-  **NAT** gesetzt
-- Prüfung im **Virtual Network Editor**: Das NAT-Netzwerk (VMnet8) verwendete
-  tatsächlich das Subnetz `172.16.242.0/24` – nicht `192.168.100.0/24`, wie in
-  der VM konfiguriert
-
-**Lösung:**
-Im Virtual Network Editor das Subnetz von VMnet8 auf `192.168.100.0` /
-`255.255.255.0` geändert. Nach VM-Neustart funktionierte die Verbindung zum
-Gateway und zum Internet.
-
-**Erkenntnis:** Eine korrekte IP-Konfiguration *innerhalb* der VM nützt nichts,
-wenn das virtuelle Netzwerk *außerhalb* der VM (auf Hypervisor-Ebene) nicht
-zum gleichen Adressbereich passt.
-
----
-
-## Problem 2: Voraussetzungsprüfung für Domänencontroller schlägt fehl
-
-**Symptom:**
-```
-Fehler bei der Überprüfung der Voraussetzungen für die Höherstufung des
-Domänencontrollers. Das lokale Administratorkonto wird zum Domänen-
-administratorkonto, wenn Sie eine neue Domäne erstellen. Die neue Domäne
-kann nicht erstellt werden, da das Kennwort für das lokale Administrator-
-konto nicht den Anforderungen entspricht.
+┌─────────────────────────────┐
+│   VMware Workstation (Host) │
+│                              │
+│  ┌────────────────────────┐  │
+│  │  SRV-HYBRID01          │  │
+│  │  Windows Server 2025   │  │
+│  │  192.168.100.10        │  │
+│  │                        │  │
+│  │  • AD DS (hybridlab.local) │
+│  │  • DNS Server          │  │
+│  │  • Azure Arc Agent     │  │
+│  │  • Azure Backup (MARS) │  │
+│  └───────────┬────────────┘  │
+│              │ NAT (VMnet8)  │
+└──────────────┼───────────────┘
+               │
+        ┌──────▼───────┐
+        │  Azure Cloud │
+        │  • Azure Arc │
+        │  • Recovery  │
+        │    Services  │
+        │    Vault     │
+        └──────────────┘
 ```
 
-**Diagnose:**
-Das lokale Administrator-Kennwort war leer, da es bei der Windows-Installation
-nie explizit gesetzt wurde.
+## 🛠️ Verwendete Technologien
 
-**Lösung:**
-```powershell
-net user Administrator <NeuesKennwort>
-```
+- **Windows Server 2025** (Domänencontroller)
+- **VMware Workstation** (Virtualisierung, NAT-Netzwerk-Konfiguration)
+- **Active Directory Domain Services (AD DS)** + DNS
+- **Azure Arc** (Server-Onboarding, hybride Verwaltung)
+- **Azure Backup / Microsoft Azure Recovery Services (MARS) Agent**
+- **PowerShell** (Diagnose, Service- und Feature-Management)
 
-Anschließend die Voraussetzungsprüfung erneut ausgeführt – diesmal erfolgreich.
+## 📋 Durchgeführte Schritte
 
-**Erkenntnis:** Bevor ein Server zur ersten Domäne einer neuen Gesamtstruktur
-wird, muss das lokale Administratorkonto ein den Richtlinien entsprechendes
-Kennwort besitzen, da dieses Konto zum Domänen-Administratorkonto wird.
+1. **VM-Setup**: Windows Server 2025 in VMware Workstation installiert, Computername
+   und statische IP-Konfiguration gesetzt (`192.168.100.10/24`)
+2. **Domain Controller**: Server zum Domänencontroller für `hybridlab.local`
+   heraufgestuft, inkl. AD DS- und DNS-Rolle
+3. **Azure Arc Onboarding**: Server über Onboarding-Skript mit Azure Arc verbunden
+   (Connected Machine Agent, Device-Code-Anmeldung)
+4. **Azure Backup**: Regelmäßige Sicherung über den MARS-Agent eingerichtet,
+   Wiederherstellungstest erfolgreich durchgeführt
 
----
+## 🖼️ Screenshots
 
-## Problem 3: NTDS und Netlogon starten nach Heraufstufung nicht
+### Domain Controller erfolgreich konfiguriert
+`whoami` bestätigt Domänenmitgliedschaft, `nslookup` löst die eigene Domäne korrekt auf:
 
-**Symptom:**
-Nach einer scheinbar erfolgreichen Heraufstufung und Neustart:
-```powershell
-Get-Service NTDS, Netlogon
-# Beide: Status = Stopped
+![DC Funktionalität](screenshots/01-dc-whoami-nslookup.png)
 
-net start netlogon
-# Anmeldedienst konnte nicht gestartet werden. Der Dienst hat keinen
-# Fehler gemeldet.
-```
+### Netzwerkkonfiguration
+Vollständige `ipconfig /all`-Ausgabe mit korrektem Hostnamen, DNS-Suffix und IP-Konfiguration:
 
-**Diagnose (schrittweise):**
-1. `Get-Service NTDS` → gestoppt, ließ sich nicht manuell starten
-2. Ereignisprotokoll geprüft (Event ID 3095, Quelle NETLOGON):
-   > "Dieser Computer ist als Mitglied einer Arbeitsgruppe konfiguriert,
-   > nicht als Mitglied einer Domäne."
-3. Bestätigung per PowerShell:
-   ```powershell
-   Get-WmiObject Win32_ComputerSystem | Select Name, Domain, PartOfDomain, Workgroup
-   # PartOfDomain: False, Workgroup: WORKGROUP
-   ```
-4. Zusätzlich zeigte `Get-WindowsFeature`, dass die **DNS-Server-Rolle**
-   entgegen der üblichen Automatik bei der AD-DS-Heraufstufung nicht
-   installiert worden war
+![Netzwerkkonfiguration](screenshots/02-ipconfig-all.png)
 
-**Ursache:** Die erste Heraufstufung war nicht vollständig durchgelaufen bzw.
-wurde nicht korrekt übernommen – der Server blieb faktisch ein einfaches
-Mitglied einer Arbeitsgruppe, obwohl der Assistent zuvor "erfolgreich"
-durchgelaufen war.
+### Azure Backup – Sicherung & Wiederherstellung erfolgreich
+Letzte Sicherung und letzte Wiederherstellung beide erfolgreich abgeschlossen:
 
-**Lösung:**
-1. DNS-Rolle manuell nachinstalliert:
-   ```powershell
-   Install-WindowsFeature -Name DNS -IncludeManagementTools
-   ```
-2. Heraufstufung mit der Option **"Neue Gesamtstruktur hinzufügen"** komplett
-   neu durchgeführt (diesmal inklusive DNS-Server-Häkchen in den
-   Domänencontrolleroptionen)
-3. Nach dem Neustart Kontrolle:
-   ```powershell
-   whoami                          # hybridlab\administrator
-   Get-Service NTDS, Netlogon, DNS # alle: Running
-   nslookup hybridlab.local        # löst korrekt zu 192.168.100.10 auf
-   ```
+![Azure Backup Erfolg](screenshots/03-azure-backup-success.png)
 
-**Erkenntnis:** Ein "erfolgreich" abgeschlossener Konfigurationsassistent
-garantiert nicht automatisch den gewünschten Endzustand. Die Kombination aus
-Ereignisprotokoll-Auswertung (Event-IDs) und gezielten PowerShell-Diagnose-
-befehlen (`Get-Service`, `Get-WindowsFeature`, `Get-WmiObject`) war nötig, um
-die tatsächliche Ursache statt nur das Symptom zu finden.
+## 🐞 Troubleshooting (ausgewählte Beispiele)
+
+Details dazu in [docs/troubleshooting.md](docs/troubleshooting.md). Kurzüberblick:
+
+| Problem | Ursache | Lösung |
+|---|---|---|
+| Server konnte eigenes Gateway nicht erreichen | VMware NAT-Subnetz (VMnet8) wich vom geplanten Adressbereich ab | Subnetz im Virtual Network Editor auf `192.168.100.0/24` angepasst |
+| Domänencontroller-Heraufstufung schlug fehl | Lokales Administrator-Kennwort war leer | Kennwort über `net user` gesetzt, Voraussetzungsprüfung erneut durchlaufen |
+| Nach Heraufstufung: NTDS/Netlogon starteten nicht | DNS-Rolle wurde bei der ersten Installation nicht mitinstalliert, Server blieb "Workgroup"-Mitglied | DNS-Rolle nachinstalliert, Heraufstufung mit "Neue Gesamtstruktur" sauber wiederholt |
+
+## 📚 Gelernte Konzepte
+
+- Unterschied zwischen Arbeitsgruppe und Domänenmitgliedschaft und dessen Auswirkung
+  auf abhängige Dienste (NTDS, Netlogon)
+- Zusammenspiel von VMware-Netzwerkeinstellungen (NAT/VMnet) und der internen
+  Windows-Netzwerkkonfiguration
+- Systematische Fehlerdiagnose über Ereignisprotokolle und PowerShell
+  (`Get-WinEvent`, `Get-Service`, `Get-WindowsFeature`)
+- Azure Arc als Brücke zwischen On-Premises-Servern und der Azure-Verwaltungsebene
+- Azure Backup End-to-End: Registrierung, Sicherungsplan, Wiederherstellung über
+  temporär eingebundenes Volume
+
+## 👤 Über mich
+
+Erstellt von Maryam Pourkhatoun im Rahmen meiner Weiterbildung zur Cloud Engineerin
+am Digital Career Institute (DCI) Berlin, als praktische Vorbereitung auf die
+AZ-900- und AZ-104-Zertifizierung.
