@@ -1,4 +1,3 @@
-
 # Hybrid Cloud Lab – On-Prem Active Directory, Azure Arc & Azure Backup
 
 Ein praxisnahes Hybrid-Cloud-Projekt, in dem ich einen lokalen Windows Server als
@@ -65,17 +64,17 @@ Microsoft Entra Connect Cloud Sync.
 ### Domain Controller erfolgreich konfiguriert
 `whoami` bestätigt Domänenmitgliedschaft, `nslookup` löst die eigene Domäne korrekt auf:
 
-![DC Funktionalität](screenshots/01-dc-whoami-nslookup.png)
+![DC Funktionalität](01-dc-whoami-nslookup.png)
 
 ### Netzwerkkonfiguration
 Vollständige `ipconfig /all`-Ausgabe mit korrektem Hostnamen, DNS-Suffix und IP-Konfiguration:
 
-![Netzwerkkonfiguration](screenshots/02-ipconfig-all.png)
+![Netzwerkkonfiguration](02-ipconfig-all.png)
 
 ### Azure Backup – Sicherung & Wiederherstellung erfolgreich
 Letzte Sicherung und letzte Wiederherstellung beide erfolgreich abgeschlossen:
 
-![Azure Backup Erfolg](screenshots/03-azure-backup-success.png)
+![Azure Backup Erfolg](03-azure-backup.png)
 
 ## 🐞 Troubleshooting (ausgewählte Beispiele)
 
